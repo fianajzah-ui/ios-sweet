@@ -71,11 +71,39 @@ jobs:
           python3 tools/remotezip.py "$URL" \
             087-86715-047.dmg research/ipsw-x
 
+
       - name: Install required host utilities
         run: |
           sudo apt-get update
-          sudo apt-get install -y apfs-fuse hfsprogs rsync
-          
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            git \
+            fuse3 \
+            libfuse3-dev \
+            bzip2 \
+            libbz2-dev \
+            libattr1-dev \
+            zlib1g-dev \
+            hfsprogs \
+            rsync
+
+      - name: Build apfs-fuse
+        run: |
+          git clone https://github.com/sgan81/apfs-fuse.git
+          cd apfs-fuse
+          git submodule update --init --recursive
+          mkdir build
+          cd build
+          cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5 ..
+          make -j2
+          sudo make install
+
+      - name: Verify dependencies
+        run: |
+          which apfs-fuse
+          which rsync
+
       - name: Build HFS+ root image
         run: |
           sudo tools/mkiosroot.sh \
