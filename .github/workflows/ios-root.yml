@@ -1,0 +1,105 @@
+name: Build iOS Root Filesystem
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-root-build
+  cancel-in-progress: false
+
+jobs:
+  build-root:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+
+    steps:
+      - name: Free runner disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/boost
+          sudo apt-get clean
+          df -h /
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential cmake git \
+            fuse3 libfuse3-dev \
+            zlib1g-dev libbz2-dev libattr1-dev \
+            libssl-dev hfsprogs rsync \
+            android-sdk-libsparse-utils \
+            python3
+
+      - name: Enable HFS+ support
+        run: |
+          sudo modprobe hfsplus
+          grep -w hfsplus /proc/filesystems
+
+      - name: Build APFS-FUSE
+        run: |
+          git clone https://github.com/sgan81/apfs-fuse.git /tmp/apfs-fuse
+          cd /tmp/apfs-fuse
+          git submodule update --init --recursive
+          cmake -S . -B build \
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+            -DCMAKE_BUILD_TYPE=Release
+          cmake --build build -j2
+          echo "/tmp/apfs-fuse/build" >> "$GITHUB_PATH"
+
+      - name: Download iOS images
+        run: |
+          mkdir -p research/ipsw-x
+
+          URL="https://updates.cdn-apple.com/2025FallFCS/fullrestores/122-77006/1158E502-D76D-4226-AA06-ED5E30CD1111/iPhone10,3,iPhone10,6_16.7.16_20H392_Restore.ipsw"
+
+          python3 tools/remotezip.py "$URL" \
+            087-86698-044.dmg research/ipsw-x
+
+          python3 tools/remotezip.py "$URL" \
+            087-86593-047.dmg research/ipsw-x
+
+          python3 tools/remotezip.py "$URL" \
+            087-86715-047.dmg research/ipsw-x
+
+      - name: Build HFS+ root image
+        run: |
+          sudo tools/mkiosroot.sh \
+            research/ipsw-x/087-86698-044.dmg \
+            research/ipsw-x/087-86593-047.dmg \
+            research/ipsw-x/087-86715-047.dmg \
+            ios16-root.img 16G
+
+      - name: Apply sweet root tweaks
+        run: |
+          sudo fsck.hfsplus -f -y ios16-root.img
+          sudo mkdir -p /mnt/iosroot
+          sudo mount -t hfsplus -o loop,force,rw \
+            ios16-root.img /mnt/iosroot
+          sudo python3 tools/sweet-root-tweaks.py /mnt/iosroot
+          sync
+          sudo umount /mnt/iosroot
+          sudo fsck.hfsplus -f -y ios16-root.img
+
+      - name: Convert sparse image
+        run: |
+          img2simg ios16-root.img ios16-root.simg
+          ls -lh ios16-root.simg
+          sha256sum ios16-root.simg
+
+      - name: Upload root image
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios16-root
+          path: ios16-root.simg
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 3
