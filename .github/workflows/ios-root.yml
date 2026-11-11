@@ -39,6 +39,7 @@ jobs:
             android-sdk-libsparse-utils \
             python3
 
+  
       - name: Enable HFS+ support
         run: |
           sudo modprobe hfsplus
@@ -70,6 +71,11 @@ jobs:
           python3 tools/remotezip.py "$URL" \
             087-86715-047.dmg research/ipsw-x
 
+      - name: Install required host utilities
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y apfs-fuse hfsprogs rsync
+          
       - name: Build HFS+ root image
         run: |
           sudo tools/mkiosroot.sh \
