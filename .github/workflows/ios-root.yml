@@ -129,11 +129,12 @@ jobs:
           ls -lh ios16-root.simg
           sha256sum ios16-root.simg
 
+
       - name: Upload root image
         uses: actions/upload-artifact@v4
         with:
           name: ios16-root
           path: ios16-root.simg
-          compression-level: 0
+          compression-level: 9
           if-no-files-found: error
           retention-days: 3
